@@ -1,0 +1,15 @@
+# Render Blueprint：后端 Web Service（Docker）。
+# 也可在 Dashboard 手动创建：Root Directory = backend，Runtime = Docker。
+# SQLite 持久化需另加 Disk（见 README）；免费实例文件系统是临时的。
+services:
+  - type: web
+    name: user-info-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: DB_PATH
+        value: data.db
+      - key: CORS_ORIGINS
+        sync: false
