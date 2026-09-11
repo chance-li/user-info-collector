@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -33,7 +34,12 @@ var cnMobile = regexp.MustCompile(`^1[3-9]\d{9}$`)
 
 func main() {
 	dbPath := getenv("DB_PATH", "data.db")
-	addr := getenv("ADDR", ":8080")
+	addr := listenAddr()
+	origins := parseCORSOrigins(os.Getenv("CORS_ORIGINS"))
+
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		log.Fatalf("create db dir: %v", err)
+	}
 
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
@@ -54,9 +60,13 @@ func main() {
 		listSubmissions(w, r, db)
 	})
 
-	handler := corsMiddleware(mux)
+	handler := corsMiddleware(origins, mux)
 
-	log.Printf("API listening on %s (db=%s)", addr, dbPath)
+	if len(origins) == 0 {
+		log.Printf("API listening on %s (db=%s, cors=*)", addr, dbPath)
+	} else {
+		log.Printf("API listening on %s (db=%s, cors=%s)", addr, dbPath, strings.Join(origins, ","))
+	}
 	if err := http.ListenAndServe(addr, handler); err != nil {
 		log.Fatal(err)
 	}
@@ -108,9 +118,22 @@ func listSubmissions(w http.ResponseWriter, r *http.Request, db *gorm.DB) {
 	writeJSON(w, http.StatusOK, items)
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
+func corsMiddleware(origins []string, next http.Handler) http.Handler {
+	allowAll := len(origins) == 0
+	allowed := make(map[string]struct{}, len(origins))
+	for _, origin := range origins {
+		allowed[origin] = struct{}{}
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if allowAll {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		} else if origin := r.Header.Get("Origin"); origin != "" {
+			if _, ok := allowed[origin]; ok {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			}
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 		if r.Method == http.MethodOptions {
@@ -119,6 +142,35 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// listenAddr prefers Render's PORT, then ADDR, then :8080.
+func listenAddr() string {
+	if port := strings.TrimSpace(os.Getenv("PORT")); port != "" {
+		if strings.HasPrefix(port, ":") {
+			return port
+		}
+		return ":" + port
+	}
+	if addr := strings.TrimSpace(os.Getenv("ADDR")); addr != "" {
+		return addr
+	}
+	return ":8080"
+}
+
+func parseCORSOrigins(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "*" {
+		return nil
+	}
+	var origins []string
+	for _, part := range strings.Split(raw, ",") {
+		origin := strings.TrimRight(strings.TrimSpace(part), "/")
+		if origin != "" && origin != "*" {
+			origins = append(origins, origin)
+		}
+	}
+	return origins
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

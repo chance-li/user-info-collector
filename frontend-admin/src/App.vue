@@ -40,7 +40,7 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''
+const API_BASE = String(import.meta.env.VITE_API_BASE || '').replace(/\/+$/, '')
 
 const items = ref([])
 const loading = ref(false)
