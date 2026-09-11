@@ -1,0 +1,28 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Go
+backend/data.db
+backend/*.db
+*.exe
+*.dll
+*.so
+*.dylib
+vendor/
+
+# Node / Vite
+node_modules/
+dist/
+*.local
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
